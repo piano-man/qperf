@@ -1,6 +1,7 @@
 #include "client.h"
 #include "client_stream.h"
 #include "common.h"
+#include "crypto_engine.h"
 
 #include <ev.h>
 #include <stdio.h>
@@ -8,7 +9,7 @@
 #include <quicly/defaults.h>
 #include <unistd.h>
 #include <netdb.h>
-#include <errno.h>
+//#include <errno.h>
 #include <float.h>
 #include <stdbool.h>
 
@@ -16,7 +17,12 @@
 
 #include <picotls/../../t/util.h>
 
-static int client_socket = -1;
+#include <runtime/poll.h>
+#include <runtime/tcp.h>
+#include <runtime/udp.h>
+#include <runtime/net.h>
+
+//static int client_socket = -1;
 static quicly_conn_t *conn = NULL;
 static ev_timer client_timeout;
 static quicly_context_t client_ctx;
@@ -26,7 +32,22 @@ static int64_t connect_time = 0;
 static bool quit_after_first_byte = false;
 static ptls_iovec_t resumption_token;
 
+static udpconn_t *client_c = NULL;
+
+//GAGAN
+//Let's create no-op cipher suites here so that quicly does not encrypt packets
+
 void client_timeout_cb(EV_P_ ev_timer *w, int revents);
+
+int str_to_addr(const char *str, uint32_t *addr) {
+  uint8_t a, b, c, d;
+
+  if (sscanf(str, "%hhu.%hhu.%hhu.%hhu", &a, &b, &c, &d) != 4) return -EINVAL;
+
+  *addr = MAKE_IP_ADDR(a, b, c, d);
+  return 0;
+}
+
 
 void client_refresh_timeout()
 {
@@ -38,7 +59,7 @@ void client_refresh_timeout()
 
 void client_timeout_cb(EV_P_ ev_timer *w, int revents)
 {
-    if(!send_pending(&client_ctx, client_socket, conn)) {
+    if(!send_pending(&client_ctx, client_c, conn)) {
         quicly_free(conn);
         exit(0);
     }
@@ -46,43 +67,51 @@ void client_timeout_cb(EV_P_ ev_timer *w, int revents)
     client_refresh_timeout();
 }
 
-void client_read_cb(EV_P_ ev_io *w, int revents)
+void client_read_cb(void *q)
 {
+    //ev_io *w;
+    //int revents;
     // retrieve data
     uint8_t buf[4096];
     struct sockaddr sa;
+    struct sockaddr_in *sin = (struct sockaddr_in *)&sa;
     socklen_t salen = sizeof(sa);
     quicly_decoded_packet_t packet;
     ssize_t bytes_received;
 
-    while((bytes_received = recvfrom(w->fd, buf, sizeof(buf), MSG_DONTWAIT, &sa, &salen)) != -1) {
-        for(ssize_t offset = 0; offset < bytes_received; ) {
+    struct netaddr raddr;
+
+    while (true) {
+	ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr);
+	if (bytes_received == 0) break;
+	for(ssize_t offset = 0; offset < bytes_received; ) {
             size_t packet_len = quicly_decode_packet(&client_ctx, &packet, buf, bytes_received, &offset);
-            if(packet_len == SIZE_MAX) {
-                break;
+	    if(packet_len == SIZE_MAX) {
+		printf("this client??!!\n");
+	        break;
             }
 
-            // handle packet --------------------------------------------------
+	    sin->sin_family = AF_INET;
+	    sin->sin_addr.s_addr = htonl(raddr.ip);
+	    sin->sin_port = htons(raddr.port);
+
+	    // handle packet --------------------------------------------------
             int ret = quicly_receive(conn, NULL, &sa, &packet);
             if(ret != 0 && ret != QUICLY_ERROR_PACKET_IGNORED) {
                 fprintf(stderr, "quicly_receive returned %i\n", ret);
                 exit(1);
             }
 
-            // check if connection ready --------------------------------------
+	    // check if connection ready --------------------------------------
             if(connect_time == 0 && quicly_connection_is_ready(conn)) {
                 connect_time = client_ctx.now->cb(client_ctx.now);
                 int64_t establish_time = connect_time - start_time;
                 printf("connection establishment time: %lums\n", establish_time);
             }
-        }
+	}
     }
 
-    if(errno != EWOULDBLOCK && errno != 0) {
-        perror("recvfrom failed");
-    }
-
-    if(!send_pending(&client_ctx, client_socket, conn)) {
+    if(!send_pending(&client_ctx, client_c, conn)) {
         quicly_free(conn);
         exit(0);
     }
@@ -132,6 +161,10 @@ int run_client(const char *port, bool gso, const char *logfile, const char *cc, 
     client_ctx.transport_params.max_stream_data.bidi_local = UINT32_MAX;
     client_ctx.transport_params.max_stream_data.bidi_remote = UINT32_MAX;
     client_ctx.initcwnd_packets = iw;
+    //GAGAN: Registering new crypto engine
+    client_ctx.initial_egress_max_udp_payload_size = 1458;
+    client_ctx.transport_params.max_udp_payload_size = 1458;
+    client_ctx.crypto_engine = &custom_crypto_engine;
 
     if(strcmp(cc, "reno") == 0) {
         client_ctx.init_cc = &quicly_cc_reno_init;
@@ -145,6 +178,18 @@ int run_client(const char *port, bool gso, const char *logfile, const char *cc, 
 
     struct ev_loop *loop = EV_DEFAULT;
 
+    struct netaddr remote_addr;
+    str_to_addr(host, & remote_addr.ip);
+    remote_addr.port = atoi(port);
+
+    struct netaddr local_addr;
+    local_addr.ip = 0;
+    local_addr.port = 3000;
+    int ret = udp_dial(local_addr, remote_addr, &client_c);
+    if (ret) return 0;
+
+    udp_set_nonblocking(client_c, true);
+
     struct sockaddr_storage sas;
     socklen_t salen;
     if(resolve_address((void*)&sas, &salen, host, port, AF_INET, SOCK_DGRAM, IPPROTO_UDP) != 0) {
@@ -152,19 +197,6 @@ int run_client(const char *port, bool gso, const char *logfile, const char *cc, 
     }
 
     struct sockaddr *sa = (void*)&sas;
-
-    client_socket = socket(sa->sa_family, SOCK_DGRAM, IPPROTO_UDP);
-    if(client_socket == -1) {
-        perror("socket(2) failed");
-        return 1;
-    }
-
-    struct sockaddr_in local = {0};
-    local.sin_family = AF_INET;
-    if (bind(client_socket, (void *)&local, sizeof(local)) != 0) {
-        perror("bind(2) failed");
-        return 1;
-    }
 
     if (logfile)
     {
@@ -177,12 +209,21 @@ int run_client(const char *port, bool gso, const char *logfile, const char *cc, 
     // start time
     start_time = client_ctx.now->cb(client_ctx.now);
 
-    int ret = quicly_connect(&conn, &client_ctx, host, sa, NULL, &next_cid, resumption_token, 0, 0);
+    ret = quicly_connect(&conn, &client_ctx, host, sa, NULL, &next_cid, resumption_token, 0, 0);
+    //GAGAN
+    //let's check if we have the secret available here. If not, we can simply export it from within quicly
+    //conn->application->cipher->egress.secret
+    //conn->application->cipher->ingress.secret
+    //sizeof(conn->application->cipher->egress.secret)
+    //Also print the secret in the setup cipher function to make sure we actually get the correct values?
+    /*send_to_iokernel(conn->application->cipher->egress.secret, sizeof(conn->application->cipher->egress.secret));*/
+    //initialize cipher_meta_vec here; cm_count will be reset after sending a batch of packets
+    cm_count = 0;
     assert(ret == 0);
     ++next_cid.master_id;
 
     enqueue_request(conn);
-    if(!send_pending(&client_ctx, client_socket, conn)) {
+    if(!send_pending(&client_ctx, client_c, conn)) {
         printf("failed to connect: send_pending failed\n");
         exit(1);
     }
@@ -192,16 +233,34 @@ int run_client(const char *port, bool gso, const char *logfile, const char *cc, 
         exit(1);
     }
 
-    ev_io socket_watcher;
-    ev_io_init(&socket_watcher, &client_read_cb, client_socket, EV_READ);
-    ev_io_start(loop, &socket_watcher);
+    //ev_io socket_watcher;
+    //ev_io_init(&socket_watcher, &client_read_cb, client_socket, EV_READ);
+    //ev_io_start(loop, &socket_watcher);
+    
+    // create shenango event loop
+    poll_trigger_t *t;
+    ret = create_trigger(&t);
+    if (ret) {
+        printf("failed to create trigger\n");
+        return 1;
+    }
+    poll_waiter_t *w;
+    ret = create_waiter(&w);
+    if (ret) {
+        printf("failed to create waiter\n");
+        return 1;
+    }
+
+    poll_arm_w_sock(w, udp_get_triggers(client_c), t, SEV_READ, &client_read_cb, client_c, client_c);
 
     ev_init(&client_timeout, &client_timeout_cb);
     client_refresh_timeout();
-
     client_set_quit_after(runtime_s);
 
-    ev_run(loop, 0);
+    while (true) {
+        poll_cb_once(w);
+	ev_run(loop, EVRUN_NOWAIT);
+    }
     return 0;
 }
 
@@ -213,7 +272,7 @@ void quit_client()
     }
 
     quicly_close(conn, 0, "");
-    if(!send_pending(&client_ctx, client_socket, conn)) {
+    if(!send_pending(&client_ctx, client_c, conn)) {
         printf("send_pending failed during connection close");
         quicly_free(conn);
         exit(0);

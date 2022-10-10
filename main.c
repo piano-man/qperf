@@ -6,6 +6,8 @@
 #include "server.h"
 #include "client.h"
 
+//#include <runtime.h>
+#include "runtime/runtime.h"
 
 static void usage(const char *cmd)
 {
@@ -33,9 +35,32 @@ static struct option long_options[] =
     {NULL, 0, NULL, 0}
 };
 
+
+char port_char[16];
+int port = 18080;
+bool server_mode = false;
+const char *host = NULL;
+int runtime_s = 10;
+int ch;
+bool ttfb_only = false;
+bool gso = false;
+const char *logfile = NULL;
+const char *cc = "reno";
+int iw = 10;
+
+void ServerHandler(void* d/*args*/) {
+	run_server(port_char, gso, logfile, cc, iw, "server.crt", "server.key");
+}
+
+void ClientHandler(void* d/*args*/) {
+	run_client(port_char, gso, logfile, cc, iw, host, runtime_s, ttfb_only);
+}
+
+
+
 int main(int argc, char** argv)
 {
-    int port = 18080;
+/*    int port = 18080;
     bool server_mode = false;
     const char *host = NULL;
     int runtime_s = 10;
@@ -44,7 +69,7 @@ int main(int argc, char** argv)
     bool gso = false;
     const char *logfile = NULL;
     const char *cc = "reno";
-    int iw = 10;
+    int iw = 10;*/
 
     while ((ch = getopt_long(argc, argv, "c:egl:p:st:h", long_options, NULL)) != -1) {
         switch (ch) {
@@ -112,9 +137,11 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    char port_char[16];
     sprintf(port_char, "%d", port);
-    return server_mode ?
-                run_server(port_char, gso, logfile, cc, iw, "server.crt", "server.key") :
-                run_client(port_char, gso, logfile, cc, iw, host, runtime_s, ttfb_only);
+
+    if (server_mode)
+	    runtime_init("/proj/quic-server-PG0/users/saeed2/quicly/caladan/server.config", ServerHandler, NULL);
+    else
+	    runtime_init("/proj/quic-server-PG0/users/saeed2/quicly/caladan/client.config", ClientHandler, NULL);
+    return 0;
 }

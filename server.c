@@ -1,6 +1,7 @@
 ﻿#include "server.h"
 #include "server_stream.h"
 #include "common.h"
+#include "crypto_engine.h"
 
 #include <stdio.h>
 #include <ev.h>
@@ -16,39 +17,18 @@
 #include <picotls/openssl.h>
 #include <picotls/../../t/util.h>
 
+#include <runtime/poll.h>
+#include <runtime/tcp.h>
+#include <runtime/udp.h>
+
 static quicly_conn_t **conns;
-static int server_socket = -1;
 static quicly_context_t server_ctx;
-static int server_socket;
 static size_t num_conns = 0;
 static ev_timer server_timeout;
 static quicly_cid_plaintext_t next_cid;
 
-static int udp_listen(struct addrinfo *addr)
-{
-    for(const struct addrinfo *rp = addr; rp != NULL; rp = rp->ai_next) {
-        int s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if(s == -1) {
-            continue;
-        }
+static udpconn_t *c = NULL;
 
-        int on = 1;
-        if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0) {
-            close(s);
-            perror("setsockopt(SO_REUSEADDR) failed");
-            return -1;
-        }
-
-        if(bind(s, rp->ai_addr, rp->ai_addrlen) == 0) {
-            return s; // success
-        }
-
-        // fail -> close socket and try with next addr
-        close(s);
-    }
-
-    return -1;
-}
 
 static inline quicly_conn_t *find_conn(struct sockaddr *sa, socklen_t salen, quicly_decoded_packet_t *packet)
 {
@@ -81,16 +61,25 @@ static size_t remove_conn(size_t i)
 
 static void server_timeout_cb(EV_P_ ev_timer *w, int revents);
 
+static int visits = 0;
 void server_send_pending()
 {
     int64_t next_timeout = INT64_MAX;
     for(size_t i = 0; i < num_conns; ++i) {
-        if(!send_pending(&server_ctx, server_socket, conns[i])) {
+	if (!send_pending(&server_ctx, c, conns[i])) {
             i = remove_conn(i);
         } else {
             next_timeout = min_int64(quicly_get_first_timeout(conns[i]), next_timeout);
         }
     }
+
+    /*visits++;
+
+    if (visits >= 1000){
+	    printf("still trying to send\n");
+	    visits = 0;
+    }*/
+
 
     int64_t now = server_ctx.now->cb(server_ctx.now);
     int64_t timeout = clamp_int64(next_timeout - now, 1, 200);
@@ -109,6 +98,7 @@ static inline void server_handle_packet(quicly_decoded_packet_t *packet, struct 
     if(conn == NULL) {
         // new conn
         int ret = quicly_accept(&conn, &server_ctx, 0, sa, packet, NULL, &next_cid, NULL);
+        /*send_to_iokernel(conn->application->cipher->egress.secret, sizeof(conn->application->cipher->egress.secret));*/
         if(ret != 0) {
             printf("quicly_accept failed with code %i\n", ret);
             return;
@@ -125,30 +115,40 @@ static inline void server_handle_packet(quicly_decoded_packet_t *packet, struct 
     }
 }
 
-static void server_read_cb(EV_P_ ev_io *w, int revents)
+static void server_read_cb(void *q)
 {
     // retrieve data
     uint8_t buf[4096];
-    struct sockaddr sa;
-    socklen_t salen = sizeof(sa);
+    struct netaddr raddr;
     quicly_decoded_packet_t packet;
     ssize_t bytes_received;
+    struct sockaddr sa;
+    struct sockaddr_in *sin = (struct sockaddr_in *)&sa;
+    socklen_t salen = sizeof(sa);
 
-    while((bytes_received = recvfrom(w->fd, buf, sizeof(buf), MSG_DONTWAIT, &sa, &salen)) != -1) {
-        for(ssize_t offset = 0; offset < bytes_received; ) {
-            size_t packet_len = quicly_decode_packet(&server_ctx, &packet, buf, bytes_received, &offset);
-            if(packet_len == SIZE_MAX) {
+    while (true) {
+        ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr);
+	if (bytes_received == 0) break;
+	for(ssize_t offset = 0; offset < bytes_received; ) {
+	    size_t packet_len = quicly_decode_packet(&server_ctx, &packet, buf, bytes_received, &offset);
+	    if(packet_len == SIZE_MAX) {
+		printf("this??!\n");
                 break;
-            }
-            server_handle_packet(&packet, &sa, salen);
+	    }
+	    sin->sin_family = AF_INET;
+            sin->sin_addr.s_addr = htonl(raddr.ip);
+            sin->sin_port = htons(raddr.port);
+
+	    server_handle_packet(&packet, &sa, salen);
+	}
+    }
+
+    //server_send_pending();
+    for(size_t i = 0; i < num_conns; ++i) {
+        if (!send_pending(&server_ctx, c, conns[i])) {
+            i = remove_conn(i);
         }
     }
-
-    if(errno != EWOULDBLOCK && errno != 0) {
-        perror("recvfrom failed");
-    }
-
-    server_send_pending();
 }
 
 static void server_on_conn_close(quicly_closed_by_remote_t *self, quicly_conn_t *conn, int err,
@@ -183,6 +183,10 @@ int run_server(const char *port, bool gso, const char *logfile, const char *cc, 
     server_ctx.transport_params.max_stream_data.bidi_local = UINT32_MAX;
     server_ctx.transport_params.max_stream_data.bidi_remote = UINT32_MAX;
     server_ctx.initcwnd_packets = iw;
+    //GAGAN: Registering new crypto engine
+    server_ctx.initial_egress_max_udp_payload_size = 1458;
+    server_ctx.transport_params.max_udp_payload_size = 1458;
+    server_ctx.crypto_engine = &custom_crypto_engine;
 
     if(strcmp(cc, "reno") == 0) {
         server_ctx.init_cc = &quicly_cc_reno_init;
@@ -199,18 +203,35 @@ int run_server(const char *port, bool gso, const char *logfile, const char *cc, 
 
     struct ev_loop *loop = EV_DEFAULT;
 
-    struct addrinfo *addr = get_address("0.0.0.0", port);
-    if(addr == NULL) {
-        printf("failed get addrinfo for port %s\n", port);
-        return -1;
-    }
 
-    server_socket = udp_listen(addr);
-    freeaddrinfo(addr);
-    if(server_socket == -1) {
-        printf("failed to listen on port %s\n", port);
+    // create shenango socket
+    struct netaddr local_addr;
+    local_addr.ip = 0;
+    local_addr.port = atoi(port);
+    //udpconn_t *c;
+    int ret = udp_listen(local_addr, &c);
+    if (ret) {
+	printf("failed to listen on port %s\n", port);
         return 1;
     }
+
+    udp_set_nonblocking(c, true);
+
+    // create shenango event loop
+    poll_trigger_t *t;
+    ret = create_trigger(&t);
+    if (ret) {
+        printf("failed to create trigger\n");
+        return 1;
+    }
+    poll_waiter_t *w;
+    ret = create_waiter(&w);
+    if (ret) {
+        printf("failed to create waiter\n");
+        return 1;
+    }
+
+    poll_arm_w_sock(w, udp_get_triggers(c), t, SEV_READ, &server_read_cb, c, c);
 
     if (logfile)
     {
@@ -219,13 +240,21 @@ int run_server(const char *port, bool gso, const char *logfile, const char *cc, 
 
     printf("starting server with pid %" PRIu64 ", port %s, cc %s, iw %i\n", get_current_pid(), port, cc, iw);
 
-    ev_io socket_watcher;
-    ev_io_init(&socket_watcher, &server_read_cb, server_socket, EV_READ);
-    ev_io_start(loop, &socket_watcher);
 
-    ev_init(&server_timeout, &server_timeout_cb);
+    // add ev loop here for shenango and add some timeout mechanism
+    //ev_init(&server_timeout, &server_timeout_cb);
 
-    ev_run(loop, 0);
+    while (true) {
+        poll_cb_once(w);
+        ev_run(loop, EVRUN_NOWAIT);
+	for(size_t i = 0; i < num_conns; ++i) {
+            if (!send_pending(&server_ctx, c, conns[i])) {
+                i = remove_conn(i);
+		printf("removed conn\n");
+	    }
+	}
+    }
+
     return 0;
 }
 

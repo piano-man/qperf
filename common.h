@@ -5,12 +5,16 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-
+#include <runtime/poll.h>
+#include <runtime/tcp.h>
+#include <runtime/udp.h>
 ptls_context_t *get_tlsctx();
+extern struct cipher_meta *cipher_meta_vec[10000];
+extern int cm_count;
 
 struct addrinfo *get_address(const char *host, const char *port);
 void enable_gso();
-bool send_pending(quicly_context_t *ctx, int fd, quicly_conn_t *conn);
+bool send_pending(quicly_context_t *ctx, udpconn_t *fd, quicly_conn_t *conn);
 void print_escaped(const char *src, size_t len);
 
 
