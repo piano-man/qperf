@@ -183,7 +183,7 @@ bool send_pending(quicly_context_t *ctx, udpconn_t *fd, quicly_conn_t *conn)
 
         //GAGAN: Loop here and confirm if all the datagrams are of the same size
         for(int i = 0 ; i < num_dgrams ; i++) {
-            printf("Size of datagram %lu is %lu\n", dgrams[i].iov_len);
+            printf("GAGAN: Size of datagram %lu is %lu\n", i, dgrams[i].iov_len);
         }
 
         if (!send_dgrams(fd, &dest.sa, dgrams, num_dgrams)) {

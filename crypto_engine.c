@@ -11,7 +11,11 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
 {
     printf("GAGAN: Test that custom engine invoked\n");
     //Use this to send the secret to the iokernel
-    send_to_iokernel(secret, hash->digest_size);
+    printf("GAGAN: Testing is_enc value %d\n", is_enc);
+    if(is_enc) {
+        printf("GAGAN: Exporting secrets to iokernel only for encryption\n");
+        send_to_iokernel(secret, hash->digest_size);
+    }
     uint8_t hpkey[PTLS_MAX_SECRET_SIZE];
     int ret;
 
