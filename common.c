@@ -32,6 +32,8 @@ ssize_t sendmsg2(udpconn_t *sock, const struct msghdr* message, int flags) {
       r = udp_write_to(sock, (void*) message->msg_iov[i].iov_base,
                         (size_t) message->msg_iov[i].iov_len,
 			 (struct netaddr*) message->msg_name, cipher_meta_vec, cm_count);
+      //reset cm_count to 0
+      cm_count = 0;
     } else {
       r = udp_write(sock, (void*) message->msg_iov[i].iov_base,
                         (size_t) message->msg_iov[i].iov_len, NULL, 0);
