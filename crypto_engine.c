@@ -14,6 +14,10 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
     printf("GAGAN: Testing is_enc value %d\n", is_enc);
     if(is_enc) {
         printf("GAGAN: Exporting secrets to iokernel only for encryption\n");
+        printf("GAGAN: Epoch when exporting secrets is %lu\n", epoch);
+        printf("GAGAN: Hash digest size when exporting secrets is %d\n", hash->digest_size);
+        printf("GAGAN: Hash block size when exporting secrets is %d\n", hash->block_size);
+        printf("GAGAN: AEAD algorithm when exporting secrets is %s\n", aead->name);
         send_to_iokernel(secret, hash->digest_size);
     }
     uint8_t hpkey[PTLS_MAX_SECRET_SIZE];
@@ -68,6 +72,7 @@ static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_
     //payload from will indicate the point at which the quic payload starts
     printf("GAGAN: Payload from %lu\n", payload_from);
     printf("GAGAN: Packet number %lu\n", packet_number);
+    printf("GAGAN: Dumping encrypted packet content to test things out\n"); //use quicly_hexdump
     printf("\n\n\n\n");
     ptls_aead_supplementary_encryption_t supp = {.ctx = header_protect_ctx,
                                                  .input = datagram.base + payload_from - QUICLY_SEND_PN_SIZE + QUICLY_MAX_PN_SIZE};
