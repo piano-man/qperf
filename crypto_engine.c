@@ -1,5 +1,6 @@
 #include "crypto_engine.h"
 #include "common.h"
+#include <string.h>
 #include <quicly/defaults.h>
 #include <runtime/poll.h>
 #include <runtime/tcp.h>
@@ -18,7 +19,10 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
         printf("GAGAN: Hash digest size when exporting secrets is %d\n", hash->digest_size);
         printf("GAGAN: Hash block size when exporting secrets is %d\n", hash->block_size);
         printf("GAGAN: AEAD algorithm when exporting secrets is %s\n", aead->name);
-        send_to_iokernel(secret, hash->digest_size);
+        printf("GAGAN: AEAD algorithm name size when exporting secrets is %d\n", strlen(aead->name));
+        printf("GAGAN: Secret when exporting secrets is %s\n", (char *)secret);
+        memcpy(secret+(hash->digest_size), aead->name, strlen(aead->name));
+        send_to_iokernel(secret, hash->digest_size+sizeof(epoch));
     }
     uint8_t hpkey[PTLS_MAX_SECRET_SIZE];
     int ret;
