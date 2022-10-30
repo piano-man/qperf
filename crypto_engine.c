@@ -96,8 +96,8 @@ static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_
     printf("GAGAN: Payload from %lu\n", payload_from);
     printf("GAGAN: Packet number %lu\n", packet_number);
     printf("GAGAN: Dumping encrypted packet content to test things out\n"); //use quicly_hexdump
-    printf("GAGAN: Printing packet epoch details %d\n", get_epoch(datagram.base+first_byte_at));
-    uint8_t epoch = get_epoch(datagram.base+first_byte_at);
+    printf("GAGAN: Printing packet epoch details %d\n", get_epoch(*(datagram.base+first_byte_at)));
+    uint8_t epoch = get_epoch(*(datagram.base+first_byte_at));
     printf("\n\n\n\n");
     ptls_aead_supplementary_encryption_t supp = {.ctx = header_protect_ctx,
                                                  .input = datagram.base + payload_from - QUICLY_SEND_PN_SIZE + QUICLY_MAX_PN_SIZE};
