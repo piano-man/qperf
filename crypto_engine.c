@@ -39,8 +39,9 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
         printf("GAGAN: Hash block size when exporting secrets is %d\n", hash->block_size);
         printf("GAGAN: AEAD algorithm when exporting secrets is %s\n", aead->name);
         printf("GAGAN: AEAD algorithm name size when exporting secrets is %d\n", strlen(aead->name));
-        printf("GAGAN: Secret when exporting secrets is\n");
-        quicly_hexdump(secret, hash->digest_size, 16);
+        char hexbuf[PTLS_MAX_DIGEST_SIZE * 2 + 1];
+        ptls_hexdump(hexbuf, secret, hash->digest_size);
+        printf("GAGAN: Secret when exporting secrets is %s\n", hexbuf);
         memcpy(secret+(hash->digest_size), aead->name, strlen(aead->name));
         send_to_iokernel(secret, hash->digest_size+strlen(aead->name));
     }
