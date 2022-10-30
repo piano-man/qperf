@@ -2,10 +2,29 @@
 #include "common.h"
 #include <string.h>
 #include <quicly/defaults.h>
+#include <quicly/../quicly.h>
 #include <runtime/poll.h>
 #include <runtime/tcp.h>
 #include <runtime/udp.h>
 #include <runtime/net.h>
+#include <assert.h>
+
+static inline uint8_t get_epoch(uint8_t first_byte)
+{
+    if (!QUICLY_PACKET_IS_LONG_HEADER(first_byte))
+        return QUICLY_EPOCH_1RTT;
+
+    switch (first_byte & QUICLY_PACKET_TYPE_BITMASK) {
+    case QUICLY_PACKET_TYPE_INITIAL:
+        return QUICLY_EPOCH_INITIAL;
+    case QUICLY_PACKET_TYPE_HANDSHAKE:
+        return QUICLY_EPOCH_HANDSHAKE;
+    case QUICLY_PACKET_TYPE_0RTT:
+        return QUICLY_EPOCH_0RTT;
+    default:
+        assert(!"FIXME");
+    }
+}
 static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *conn, size_t epoch, int is_enc,
                                 ptls_cipher_context_t **hp_ctx, ptls_aead_context_t **aead_ctx, ptls_aead_algorithm_t *aead,
                                 ptls_hash_algorithm_t *hash, const void *secret)
@@ -22,7 +41,7 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
         printf("GAGAN: AEAD algorithm name size when exporting secrets is %d\n", strlen(aead->name));
         printf("GAGAN: Secret when exporting secrets is %s\n", (char *)secret);
         memcpy(secret+(hash->digest_size), aead->name, strlen(aead->name));
-        send_to_iokernel(secret, hash->digest_size+sizeof(epoch));
+        send_to_iokernel(secret, hash->digest_size+strlen(aead->name));
     }
     uint8_t hpkey[PTLS_MAX_SECRET_SIZE];
     int ret;
@@ -77,6 +96,8 @@ static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_
     printf("GAGAN: Payload from %lu\n", payload_from);
     printf("GAGAN: Packet number %lu\n", packet_number);
     printf("GAGAN: Dumping encrypted packet content to test things out\n"); //use quicly_hexdump
+    printf("GAGAN: Printing packet epoch details %d\n", get_epoch(datagram.base+first_byte_at));
+    uint8_t epoch = get_epoch(datagram.base+first_byte_at);
     printf("\n\n\n\n");
     ptls_aead_supplementary_encryption_t supp = {.ctx = header_protect_ctx,
                                                  .input = datagram.base + payload_from - QUICLY_SEND_PN_SIZE + QUICLY_MAX_PN_SIZE};
@@ -101,7 +122,7 @@ static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_
     cm->body_len = payload_from;
     //datagram.len-payload_from should give the body_len
     //payload_from-first_byte_at should give the header_len
-    cm->header_form = 0;//this will be needed if we move header encryption to the iokernel
+    cm->header_form = epoch;//this will be needed if we move header encryption to the iokernel
     cipher_meta_vec[cm_count++] = cm;
 
     //GAGAN: This looks to be header encryption
