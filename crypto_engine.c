@@ -44,7 +44,7 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
         ptls_hexdump(hexbuf, secret, hash->digest_size);
         printf("GAGAN: Secret when exporting secrets is %s\n", hexbuf);
         memcpy((char*)secret+(hash->digest_size), aead->name, strlen(aead->name));
-        memcpy((char*)secret+(hash->digest_size)+strlen(aead->name), &epoch, sizeof(size_t));
+        memcpy((char*)secret+(hash->digest_size)+strlen(aead->name), (char*)&epoch, sizeof(size_t));
         send_to_iokernel(secret, hash->digest_size+strlen(aead->name)+sizeof(size_t));
     }
     uint8_t hpkey[PTLS_MAX_SECRET_SIZE];
