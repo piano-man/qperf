@@ -110,9 +110,9 @@ bool send_dgrams_gso(udpconn_t *fd, struct sockaddr *dest, struct iovec *dgrams,
         .iov_len = dgrams[num_dgrams - 1].iov_base + dgrams[num_dgrams - 1].iov_len - dgrams[0].iov_base
     };
 
-    printf("GAGAN: Printing out the individual iovec lengths\n");
-    printf("GAGAN: iovec 0 length %lu\n", dgrams[0].iov_len);
-    printf("GAGAN: iovec last length %lu\n", dgrams[num_dgrams - 1].iov_len);
+    //printf("GAGAN : Printing out the individual iovec lengths\n");
+    //printf("GAGAN : iovec 0 length %lu\n", dgrams[0].iov_len);
+    //printf("GAGAN : iovec last length %lu\n", dgrams[num_dgrams - 1].iov_len);
 
     struct sockaddr_in *sin = (struct sockaddr_in *)dest;
     struct netaddr daddr;
@@ -185,7 +185,7 @@ bool send_pending(quicly_context_t *ctx, udpconn_t *fd, quicly_conn_t *conn)
 
         //GAGAN: Loop here and confirm if all the datagrams are of the same size
         for(int i = 0 ; i < num_dgrams ; i++) {
-            printf("GAGAN: Size of datagram %lu is %lu\n", i, dgrams[i].iov_len);
+            //printf("GAGAN : Size of datagram %lu is %lu\n", i, dgrams[i].iov_len);
         }
 
         if (!send_dgrams(fd, &dest.sa, dgrams, num_dgrams)) {
