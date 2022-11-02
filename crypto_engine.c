@@ -133,7 +133,7 @@ static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_
     unsigned long header_len = payload_from - first_byte_at;
     unsigned long body_len = datagram.len - payload_from - packet_protect_ctx->algo->tag_size; 
     //printf("GAGAN : Packet, header, and body len are %lu, %lu, %lu\n", packet_len, header_len, body_len);
-    printf("\n\n\n\n");
+    /*printf("\n\n\n\n");*/
     struct cipher_meta *cm = (struct cipher_meta *)malloc(1*sizeof(struct cipher_meta));
     //add check to ensure allocation doesn't fail
     cm->aead_index = 0;
