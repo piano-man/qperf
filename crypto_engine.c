@@ -39,13 +39,29 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
         printf("GAGAN: Hash block size when exporting secrets is %d\n", hash->block_size);
         printf("GAGAN: AEAD algorithm when exporting secrets is %s\n", aead->name);
         printf("GAGAN: AEAD algorithm name size when exporting secrets is %d\n", strlen(aead->name));
-        printf("GAGAN: Sizeof size is %lu\n", sizeof(size_t));
         char hexbuf[PTLS_MAX_DIGEST_SIZE * 2 + 1];
         ptls_hexdump(hexbuf, secret, hash->digest_size);
+        char *embed_name = "128";
+        char *embed_epoch = "0";
+        if(strcmp(aead->name, "AES256-GCM") == 0) {
+            embed_name = "256";
+        }
+
+        if(epoch == 1) {
+           embed_epoch = "1"; 
+        } else if(epoch == 2) {
+            embed_epoch = "2";
+        } else if(epoch == 3) {
+            embed_epoch = "3";
+        }
+
         printf("GAGAN: Secret when exporting secrets is %s\n", hexbuf);
-        memcpy((char*)secret+(hash->digest_size), aead->name, strlen(aead->name));
-        memcpy((char*)secret+(hash->digest_size)+strlen(aead->name), (char*)&epoch, sizeof(size_t));
-        send_to_iokernel(secret, hash->digest_size+strlen(aead->name)+sizeof(size_t));
+        printf("GAGAN: Embedding name and length %s - %lu\n", embed_name, strlen(embed_name));
+        printf("GAGAN: Embedding epoch and length %s - %lu\n", embed_epoch, strlen(embed_epoch));
+        memcpy((char*)secret+(hash->digest_size), embed_name, strlen(embed_name));
+        memcpy((char*)secret+(hash->digest_size)+strlen(embed_name), embed_epoch, strlen(embed_epoch));
+        printf("GAGAN: Total length being exported is %lu\n", hash->digest_size+strlen(embed_name)+strlen(embed_epoch));
+        send_to_iokernel(secret, hash->digest_size+strlen(embed_name)+strlen(embed_epoch));
     }
     uint8_t hpkey[PTLS_MAX_SECRET_SIZE];
     int ret;
@@ -101,10 +117,10 @@ static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_
     printf("GAGAN: Packet number %lu\n", packet_number);
     printf("GAGAN: Dumping encrypted packet content to test things out\n"); //use quicly_hexdump
     printf("GAGAN: Printing packet epoch details %d\n", get_epoch(*(datagram.base+first_byte_at)));
+    printf("GAGAN: Checking if packets are coalesced %d\n", coalesced);
     uint8_t epoch = get_epoch(*(datagram.base+first_byte_at));
-    printf("\n\n\n\n");
-    ptls_aead_supplementary_encryption_t supp = {.ctx = header_protect_ctx,
-                                                 .input = datagram.base + payload_from - QUICLY_SEND_PN_SIZE + QUICLY_MAX_PN_SIZE};
+    /*ptls_aead_supplementary_encryption_t supp = {.ctx = header_protect_ctx,*/
+                                                 /*.input = datagram.base + payload_from - QUICLY_SEND_PN_SIZE + QUICLY_MAX_PN_SIZE}; //don't understand the "+ QUICLY_MAX_PN_SIZE"*/
 
     //GAGAN
     /*ptls_aead_encrypt_s(packet_protect_ctx, datagram.base + payload_from, datagram.base + payload_from,*/
@@ -113,17 +129,18 @@ static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_
     //Populate cipher meta subarray with relevant info needed for encryption and extracting chunks of data in iokernel
 
     //Create cipher meta here to be able to encrypt packet later
+    unsigned long packet_len = datagram.len - first_byte_at;
     unsigned long header_len = payload_from - first_byte_at;
-    //GAGAN: Check how to determine body len accurately
-    //If packets are being padded to MTU size, can exact computation of this be avoided?
-    unsigned long body_len = datagram.len - payload_from; //Do we need to subtract tag_size?
+    unsigned long body_len = datagram.len - payload_from - packet_protect_ctx->algo->tag_size; 
+    printf("GAGAN: Packet, header, and body len are %lu, %lu, %lu\n", packet_len, header_len, body_len);
+    printf("\n\n\n\n");
     struct cipher_meta *cm = (struct cipher_meta *)malloc(1*sizeof(struct cipher_meta));
     //add check to ensure allocation doesn't fail
     cm->aead_index = 0;
-    cm->header_cipher_index = datagram.len; //using this to temporarily store the length of the datagram
+    cm->header_cipher_index = packet_len; //using this to temporarily store the length of the datagram
     cm->packet_num = packet_number;
-    cm->header_len = first_byte_at; //should be 0
-    cm->body_len = payload_from;
+    cm->header_len = header_len;
+    cm->body_len = body_len;
     //datagram.len-payload_from should give the body_len
     //payload_from-first_byte_at should give the header_len
     cm->header_form = epoch;//this will be needed if we move header encryption to the iokernel
