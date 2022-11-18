@@ -252,7 +252,7 @@ size_t quicly_decode_decrypted_packet(quicly_context_t *ctx, quicly_decoded_pack
                 packet->octets.len = packet->encrypted_off + rest_length;
 
                 //decode the encoded packet number
-                packet->decrypted.pn = quicly_decode16(&(packet->octets.base[packet->encrypted_off]));
+                packet->decrypted.pn = quicly_decode16(&(packet->octets.base+packet->encrypted_off));
                 size_t pnlen = (packet->octets.base[0] & 0x3) + 1;
                 packet->encrypted_off = packet->encrypted_off+pnlen;
             }
