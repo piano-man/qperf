@@ -40,19 +40,19 @@ static udpconn_t *client_c = NULL;
 void client_timeout_cb(EV_P_ ev_timer *w, int revents);
 
 int str_to_addr(const char *str, uint32_t *addr) {
-  uint8_t a, b, c, d;
+    uint8_t a, b, c, d;
 
-  if (sscanf(str, "%hhu.%hhu.%hhu.%hhu", &a, &b, &c, &d) != 4) return -EINVAL;
+    if (sscanf(str, "%hhu.%hhu.%hhu.%hhu", &a, &b, &c, &d) != 4) return -EINVAL;
 
-  *addr = MAKE_IP_ADDR(a, b, c, d);
-  return 0;
+    *addr = MAKE_IP_ADDR(a, b, c, d);
+    return 0;
 }
 
 
 void client_refresh_timeout()
 {
     int64_t timeout = clamp_int64(quicly_get_first_timeout(conn) - client_ctx.now->cb(client_ctx.now),
-                                  1, 200);
+            1, 200);
     client_timeout.repeat = timeout / 1000.;
     ev_timer_again(EV_DEFAULT, &client_timeout);
 }
@@ -82,33 +82,34 @@ void client_read_cb(void *q)
     struct netaddr raddr;
 
     while (true) {
-	ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr);
-	if (bytes_received == 0) break;
-	for(ssize_t offset = 0; offset < bytes_received; ) {
+        bool is_decrypted = true;
+        ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr, &is_decrypted);
+        if (bytes_received == 0) break;
+        for(ssize_t offset = 0; offset < bytes_received; ) {
             size_t packet_len = quicly_decode_packet(&client_ctx, &packet, buf, bytes_received, &offset);
-	    if(packet_len == SIZE_MAX) {
-		printf("this client??!!\n");
-	        break;
+            if(packet_len == SIZE_MAX) {
+                printf("this client??!!\n");
+                break;
             }
 
-	    sin->sin_family = AF_INET;
-	    sin->sin_addr.s_addr = htonl(raddr.ip);
-	    sin->sin_port = htons(raddr.port);
+            sin->sin_family = AF_INET;
+            sin->sin_addr.s_addr = htonl(raddr.ip);
+            sin->sin_port = htons(raddr.port);
 
-	    // handle packet --------------------------------------------------
+            // handle packet --------------------------------------------------
             int ret = quicly_receive(conn, NULL, &sa, &packet);
             if(ret != 0 && ret != QUICLY_ERROR_PACKET_IGNORED) {
                 fprintf(stderr, "quicly_receive returned %i\n", ret);
                 exit(1);
             }
 
-	    // check if connection ready --------------------------------------
+            // check if connection ready --------------------------------------
             if(connect_time == 0 && quicly_connection_is_ready(conn)) {
                 connect_time = client_ctx.now->cb(client_ctx.now);
                 int64_t establish_time = connect_time - start_time;
                 printf("connection establishment time: %lums\n", establish_time);
             }
-	}
+        }
     }
 
     if(!send_pending(&client_ctx, client_c, conn)) {
@@ -130,7 +131,7 @@ void enqueue_request(quicly_conn_t *conn)
 }
 
 static void client_on_conn_close(quicly_closed_by_remote_t *self, quicly_conn_t *conn, int err,
-                                 uint64_t frame_type, const char *reason, size_t reason_len)
+        uint64_t frame_type, const char *reason, size_t reason_len)
 {
     if (QUICLY_ERROR_IS_QUIC_TRANSPORT(err)) {
         fprintf(stderr, "transport close:code=0x%" PRIx16 ";frame=%" PRIu64 ";reason=%.*s\n", QUICLY_ERROR_GET_ERROR_CODE(err),
@@ -236,7 +237,7 @@ int run_client(const char *port, bool gso, const char *logfile, const char *cc, 
     //ev_io socket_watcher;
     //ev_io_init(&socket_watcher, &client_read_cb, client_socket, EV_READ);
     //ev_io_start(loop, &socket_watcher);
-    
+
     // create shenango event loop
     poll_trigger_t *t;
     ret = create_trigger(&t);
@@ -259,7 +260,7 @@ int run_client(const char *port, bool gso, const char *logfile, const char *cc, 
 
     while (true) {
         poll_cb_once(w);
-	ev_run(loop, EVRUN_NOWAIT);
+        ev_run(loop, EVRUN_NOWAIT);
     }
     return 0;
 }

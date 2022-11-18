@@ -66,7 +66,7 @@ void server_send_pending()
 {
     int64_t next_timeout = INT64_MAX;
     for(size_t i = 0; i < num_conns; ++i) {
-	if (!send_pending(&server_ctx, c, conns[i])) {
+        if (!send_pending(&server_ctx, c, conns[i])) {
             i = remove_conn(i);
         } else {
             next_timeout = min_int64(quicly_get_first_timeout(conns[i]), next_timeout);
@@ -75,10 +75,10 @@ void server_send_pending()
 
     /*visits++;
 
-    if (visits >= 1000){
-	    printf("still trying to send\n");
-	    visits = 0;
-    }*/
+      if (visits >= 1000){
+      printf("still trying to send\n");
+      visits = 0;
+      }*/
 
 
     int64_t now = server_ctx.now->cb(server_ctx.now);
@@ -127,20 +127,25 @@ static void server_read_cb(void *q)
     socklen_t salen = sizeof(sa);
 
     while (true) {
-        ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr);
-	if (bytes_received == 0) break;
-	for(ssize_t offset = 0; offset < bytes_received; ) {
-	    size_t packet_len = quicly_decode_packet(&server_ctx, &packet, buf, bytes_received, &offset);
-	    if(packet_len == SIZE_MAX) {
-		printf("this??!\n");
-                break;
-	    }
-	    sin->sin_family = AF_INET;
-            sin->sin_addr.s_addr = htonl(raddr.ip);
-            sin->sin_port = htons(raddr.port);
+        bool is_decrypted = true;
+        ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr, &is_decrypted);
+        if (bytes_received == 0) break;
+        if(!is_decrypted) {
+            for(ssize_t offset = 0; offset < bytes_received; ) {
+                size_t packet_len = quicly_decode_packet(&server_ctx, &packet, buf, bytes_received, &offset);
+                if(packet_len == SIZE_MAX) {
+                    printf("this??!\n");
+                    break;
+                }
+                sin->sin_family = AF_INET;
+                sin->sin_addr.s_addr = htonl(raddr.ip);
+                sin->sin_port = htons(raddr.port);
 
-	    server_handle_packet(&packet, &sa, salen);
-	}
+                server_handle_packet(&packet, &sa, salen);
+            }
+        } else {
+            //we get a decrypted packet from the iokernel
+        }
     }
 
     //server_send_pending();
@@ -152,7 +157,7 @@ static void server_read_cb(void *q)
 }
 
 static void server_on_conn_close(quicly_closed_by_remote_t *self, quicly_conn_t *conn, int err,
-                                 uint64_t frame_type, const char *reason, size_t reason_len)
+        uint64_t frame_type, const char *reason, size_t reason_len)
 {
     if (QUICLY_ERROR_IS_QUIC_TRANSPORT(err)) {
         fprintf(stderr, "transport close:code=0x%" PRIx16 ";frame=%" PRIu64 ";reason=%.*s\n", QUICLY_ERROR_GET_ERROR_CODE(err),
@@ -211,7 +216,7 @@ int run_server(const char *port, bool gso, const char *logfile, const char *cc, 
     //udpconn_t *c;
     int ret = udp_listen(local_addr, &c);
     if (ret) {
-	printf("failed to listen on port %s\n", port);
+        printf("failed to listen on port %s\n", port);
         return 1;
     }
 
@@ -247,12 +252,12 @@ int run_server(const char *port, bool gso, const char *logfile, const char *cc, 
     while (true) {
         poll_cb_once(w);
         ev_run(loop, EVRUN_NOWAIT);
-	for(size_t i = 0; i < num_conns; ++i) {
+        for(size_t i = 0; i < num_conns; ++i) {
             if (!send_pending(&server_ctx, c, conns[i])) {
                 i = remove_conn(i);
-		printf("removed conn\n");
-	    }
-	}
+                printf("removed conn\n");
+            }
+        }
     }
 
     return 0;
