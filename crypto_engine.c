@@ -252,7 +252,7 @@ size_t quicly_decode_decrypted_packet(quicly_context_t *ctx, quicly_decoded_pack
                 packet->octets.len = packet->encrypted_off + rest_length;
 
                 //decode the encoded packet number
-                uint8_t pn_src = packet->octets.base+packet->encrypted_off;
+                uint8_t *pn_src = packet->octets.base+packet->encrypted_off;
                 packet->decrypted.pn = quicly_decode16(&pn_src);
                 size_t pnlen = (packet->octets.base[0] & 0x3) + 1;
                 packet->encrypted_off = packet->encrypted_off+pnlen;
@@ -284,7 +284,7 @@ size_t quicly_decode_decrypted_packet(quicly_context_t *ctx, quicly_decoded_pack
         packet->_is_stateless_reset_cached = QUICLY__DECODED_PACKET_CACHED_MAYBE_STATELESS_RESET;
 
         //decode the encoded packet number
-        uint8_t pn_src = packet->octets.base+packet->encrypted_off;
+        uint8_t *pn_src = packet->octets.base+packet->encrypted_off;
         packet->decrypted.pn = quicly_decode16(&pn_src);
         size_t pnlen = (packet->octets.base[0] & 0x3) + 1;
         packet->encrypted_off = packet->encrypted_off+pnlen;
