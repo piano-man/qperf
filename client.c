@@ -86,7 +86,7 @@ void client_read_cb(void *q)
         ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr, &is_decrypted);
         if (bytes_received == 0) break;
         for(ssize_t offset = 0; offset < bytes_received; ) {
-            size_t packet_len = quicly_decode_packet(&client_ctx, &packet, buf, bytes_received, &offset);
+            size_t packet_len = quicly_decode_decrypted_packet(&client_ctx, &packet, buf, bytes_received, &offset);
             if(packet_len == SIZE_MAX) {
                 printf("this client??!!\n");
                 break;

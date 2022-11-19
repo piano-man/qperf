@@ -132,7 +132,7 @@ static void server_read_cb(void *q)
         if (bytes_received == 0) break;
         if(!is_decrypted) {
             for(ssize_t offset = 0; offset < bytes_received; ) {
-                size_t packet_len = quicly_decode_packet(&server_ctx, &packet, buf, bytes_received, &offset);
+                size_t packet_len = quicly_decode_decrytped_packet(&server_ctx, &packet, buf, bytes_received, &offset);
                 if(packet_len == SIZE_MAX) {
                     printf("this??!\n");
                     break;
