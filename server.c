@@ -132,8 +132,8 @@ static void server_read_cb(void *q)
         if (bytes_received == 0) break;
         /*if(!is_decrypted) {*/
             for(ssize_t offset = 0; offset < bytes_received; ) {
-            if(is_decrypted) {
                 size_t packet_len;
+            if(is_decrypted) {
                 printf("GAGAN: Received decrypted packet from iokernel\n");
                 packet_len = quicly_decode_decrypted_packet(&server_ctx, &packet, buf, bytes_received, &offset);
             } else {
