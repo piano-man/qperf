@@ -130,14 +130,14 @@ static void server_read_cb(void *q)
         bool is_decrypted = true;
         ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr, &is_decrypted);
         if (bytes_received == 0) break;
-        if(!is_decrypted) {
+        /*if(!is_decrypted) {*/
             for(ssize_t offset = 0; offset < bytes_received; ) {
             if(is_decrypted) {
                 printf("GAGAN: Received decrypted packet from iokernel\n");
-                packet_len = quicly_decode_decrypted_packet(&client_ctx, &packet, buf, bytes_received, &offset);
+                packet_len = quicly_decode_decrypted_packet(&server_ctx, &packet, buf, bytes_received, &offset);
             } else {
                 printf("GAGAN: Received unaltered packet from iokernel\n");
-                packet_len = quicly_decode_packet(&client_ctx, &packet, buf, bytes_received, &offset);
+                packet_len = quicly_decode_packet(&server_ctx, &packet, buf, bytes_received, &offset);
             }
                 if(packet_len == SIZE_MAX) {
                     printf("this??!\n");
@@ -149,9 +149,9 @@ static void server_read_cb(void *q)
 
                 server_handle_packet(&packet, &sa, salen);
             }
-        } else {
-            //we get a decrypted packet from the iokernel
-        }
+        /*} else {*/
+            /*//we get a decrypted packet from the iokernel*/
+        /*}*/
     }
 
     //server_send_pending();
