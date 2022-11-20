@@ -8,6 +8,17 @@
 #include <runtime/poll.h>
 #include <runtime/tcp.h>
 #include <runtime/udp.h>
+
+static bool debug = true;
+#define DEBUG(...) \
+do { \
+    if (!debug) \
+        break; \
+    fprintf(stderr, "DEBUG %s:%d : ", __FUNCTION__, __LINE__); \
+    fprintf(stderr, __VA_ARGS__); \
+    fprintf(stderr, "\n"); \
+} while (0)
+
 ptls_context_t *get_tlsctx();
 extern struct cipher_meta *cipher_meta_vec[10000];
 extern int cm_count;

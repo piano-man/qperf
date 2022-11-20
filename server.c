@@ -134,10 +134,10 @@ static void server_read_cb(void *q)
             for(ssize_t offset = 0; offset < bytes_received; ) {
                 size_t packet_len;
             if(is_decrypted) {
-                printf("GAGAN: Received decrypted packet from iokernel\n");
+                DEBUG("GAGAN: Received decrypted packet from iokernel\n");
                 packet_len = quicly_decode_decrypted_packet(&server_ctx, &packet, buf, bytes_received, &offset);
             } else {
-                printf("GAGAN: Received unaltered packet from iokernel\n");
+                DEBUG("GAGAN: Received unaltered packet from iokernel\n");
                 packet_len = quicly_decode_packet(&server_ctx, &packet, buf, bytes_received, &offset);
             }
                 if(packet_len == SIZE_MAX) {
