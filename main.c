@@ -140,8 +140,8 @@ int main(int argc, char** argv)
     sprintf(port_char, "%d", port);
 
     if (server_mode)
-	    runtime_init("/proj/quic-server-PG0/users/saeed2/quicly/caladan/server.config", ServerHandler, NULL);
+	    runtime_init("/proj/quic-server-PG0/users/gagan/custom/decryption/caladan_quic/server.config", ServerHandler, NULL);
     else
-	    runtime_init("/proj/quic-server-PG0/users/saeed2/quicly/caladan/client.config", ClientHandler, NULL);
+	    runtime_init("/proj/quic-server-PG0/users/gagan/custom/decryption/caladan_quic/client.config", ClientHandler, NULL);
     return 0;
 }

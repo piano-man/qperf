@@ -94,10 +94,12 @@ static void server_timeout_cb(EV_P_ ev_timer *w, int revents)
 
 static inline void server_handle_packet(quicly_decoded_packet_t *packet, struct sockaddr *sa, socklen_t salen)
 {
+	//printf("GAGAN: Handling Server Packet\n");
     quicly_conn_t *conn = find_conn(sa, salen, packet);
     if(conn == NULL) {
         // new conn
         int ret = quicly_accept(&conn, &server_ctx, 0, sa, packet, NULL, &next_cid, NULL);
+	//sleep(0.1);
         /*send_to_iokernel(conn->application->cipher->egress.secret, sizeof(conn->application->cipher->egress.secret));*/
         if(ret != 0) {
             printf("quicly_accept failed with code %i\n", ret);
@@ -107,6 +109,7 @@ static inline void server_handle_packet(quicly_decoded_packet_t *packet, struct 
         printf("got new connection\n");
         append_conn(conn);
     } else {
+	    //printf("GAGAN: Calling quicly receive\n");
         int ret = quicly_receive(conn, NULL, sa, packet);
         if(ret != 0 && ret != QUICLY_ERROR_PACKET_IGNORED) {
             fprintf(stderr, "quicly_receive returned %i\n", ret);
@@ -129,6 +132,7 @@ static void server_read_cb(void *q)
     while (true) {
         bool is_decrypted = true;
         ssize_t bytes_received = udp_read_from((udpconn_t *)q, buf, sizeof(buf), &raddr, &is_decrypted);
+	DEBUG("GAGAN: Bytes received from iokernel %lu\n", bytes_received);
         if (bytes_received == 0) break;
         /*if(!is_decrypted) {*/
             for(ssize_t offset = 0; offset < bytes_received; ) {
@@ -148,6 +152,7 @@ static void server_read_cb(void *q)
                 sin->sin_addr.s_addr = htonl(raddr.ip);
                 sin->sin_port = htons(raddr.port);
 
+		//printf("GAGAN: Offset processed is %lu\n", offset);
                 server_handle_packet(&packet, &sa, salen);
             }
         /*} else {*/
@@ -191,6 +196,9 @@ int run_server(const char *port, bool gso, const char *logfile, const char *cc, 
     server_ctx.tls = get_tlsctx();
     server_ctx.stream_open = &stream_open;
     server_ctx.closed_by_remote = &closed_by_remote;
+    //server_ctx.transport_params.max_stream_data.uni = 4611686018427387903;
+    //server_ctx.transport_params.max_stream_data.bidi_local = 4611686018427387903;
+    //server_ctx.transport_params.max_stream_data.bidi_remote = 4611686018427387903;
     server_ctx.transport_params.max_stream_data.uni = UINT32_MAX;
     server_ctx.transport_params.max_stream_data.bidi_local = UINT32_MAX;
     server_ctx.transport_params.max_stream_data.bidi_remote = UINT32_MAX;

@@ -9,7 +9,7 @@
 #include <runtime/tcp.h>
 #include <runtime/udp.h>
 
-static bool debug = true;
+static bool debug = false;
 #define DEBUG(...) \
 do { \
     if (!debug) \

@@ -29,12 +29,12 @@ static int default_setup_cipher(quicly_crypto_engine_t *engine, quicly_conn_t *c
                                 ptls_cipher_context_t **hp_ctx, ptls_aead_context_t **aead_ctx, ptls_aead_algorithm_t *aead,
                                 ptls_hash_algorithm_t *hash, const void *secret)
 {
-    //DEBUG("GAGAN : Test that custom engine invoked\n");
+    //printf("GAGAN : Test that custom engine invoked\n");
     //Use this to send the secret to the iokernel
-    DEBUG("GAGAN : Testing is_enc value %d\n", is_enc);
+    //printf("GAGAN : Testing is_enc value %d\n", is_enc);
     /*if(is_enc) {*/
         //DEBUG("GAGAN : Exporting secrets to iokernel only for encryption\n");
-    DEBUG("GAGAN : Epoch when exporting secrets is %lu\n", epoch);
+    //printf("GAGAN : Epoch when exporting secrets is %lu\n", epoch);
     DEBUG("GAGAN : Hash digest size when exporting secrets is %d\n", hash->digest_size);
     DEBUG("GAGAN : Hash block size when exporting secrets is %d\n", hash->block_size);
     DEBUG("GAGAN : AEAD algorithm when exporting secrets is %s\n", aead->name);
@@ -109,6 +109,8 @@ Exit:
     return ret;
 }
 
+static uint64_t next_expected_pn = 0;
+
 static void default_finalize_send_packet(quicly_crypto_engine_t *engine, quicly_conn_t *conn,
                                          ptls_cipher_context_t *header_protect_ctx, ptls_aead_context_t *packet_protect_ctx,
                                          ptls_iovec_t datagram, size_t first_byte_at, size_t payload_from, uint64_t packet_number,
@@ -181,6 +183,7 @@ size_t quicly_decode_decrypted_packet(quicly_context_t *ctx, quicly_decoded_pack
     src += *off + 1;
 
     if (QUICLY_PACKET_IS_LONG_HEADER(packet->octets.base[0])) {
+	printf("GAGAN: This should not happen\n");
         /* long header */
         uint64_t rest_length;
         if (src_end - src < 5)
@@ -254,6 +257,8 @@ size_t quicly_decode_decrypted_packet(quicly_context_t *ctx, quicly_decoded_pack
                 //decode the encoded packet number
                 const uint8_t *pn_src = packet->octets.base+packet->encrypted_off;
                 packet->decrypted.pn = quicly_decode16(&pn_src);
+		//printf("GAGAN: Decoded packet number is %lu\n", packet->decrypted.pn);
+                packet->decrypted.key_phase = 0;
                 size_t pnlen = (packet->octets.base[0] & 0x3) + 1;
                 packet->encrypted_off = packet->encrypted_off+pnlen;
             }
@@ -265,6 +270,7 @@ size_t quicly_decode_decrypted_packet(quicly_context_t *ctx, quicly_decoded_pack
         packet->_is_stateless_reset_cached = QUICLY__DECODED_PACKET_CACHED_NOT_STATELESS_RESET;
     } else {
         /* short header */
+	//printf("GAGAN: Expected Case\n");
         if (ctx->cid_encryptor != NULL) {
             if (src_end - src < QUICLY_MAX_CID_LEN_V1)
                 goto Error;
@@ -284,9 +290,28 @@ size_t quicly_decode_decrypted_packet(quicly_context_t *ctx, quicly_decoded_pack
         packet->_is_stateless_reset_cached = QUICLY__DECODED_PACKET_CACHED_MAYBE_STATELESS_RESET;
 
         //decode the encoded packet number
-        const uint8_t *pn_src = packet->octets.base+packet->encrypted_off;
-        packet->decrypted.pn = quicly_decode16(&pn_src);
-        size_t pnlen = (packet->octets.base[0] & 0x3) + 1;
+	
+    size_t pnlen = (packet->octets.base[0] & 0x3) + 1;
+    uint32_t pnbits = 0;
+    for (size_t i = 0; i != pnlen; ++i) {
+        //packet->octets.base[packet->encrypted_off + i] ^= hpmask[i + 1];
+        pnbits = (pnbits << 8) | packet->octets.base[packet->encrypted_off + i];
+    }
+
+    //size_t aead_off = packet->encrypted_off + pnlen;
+    uint64_t pn = quicly_determine_packet_number(pnbits, pnlen * 8, next_expected_pn);
+
+    if (next_expected_pn <= pn) {
+        next_expected_pn = pn+1;
+    }
+
+
+        //const uint8_t *pn_src = packet->octets.base+packet->encrypted_off;
+        //packet->decrypted.pn = quicly_decode16(&pn_src);
+	packet->decrypted.pn = pn;
+	//printf("GAGAN: Decoded packet number is %lu\n", packet->decrypted.pn);
+        packet->decrypted.key_phase = 0;
+        //size_t pnlen = (packet->octets.base[0] & 0x3) + 1;
         packet->encrypted_off = packet->encrypted_off+pnlen;
     }
 

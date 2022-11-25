@@ -29,6 +29,12 @@ ssize_t sendmsg2(udpconn_t *sock, const struct msghdr* message, int flags) {
     ssize_t r;
 //    printf("iovec len %ld \n ", message->msg_iov[i].iov_len);
     if (message->msg_name != NULL) {
+	   // printf("\n\n\n\n\n\n\n\n");
+      //usleep(0.000000000000000001);
+      //struct timespec tim;
+      //tim.tv_sec  = 0;
+      //	tim.tv_nsec = 1;
+      //nanosleep(&tim, NULL);
       r = udp_write_to(sock, (void*) message->msg_iov[i].iov_base,
                         (size_t) message->msg_iov[i].iov_len,
 			 (struct netaddr*) message->msg_name, cipher_meta_vec, cm_count);
